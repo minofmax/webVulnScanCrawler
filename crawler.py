@@ -6,13 +6,8 @@ import time
 import traceback
 from typing import List
 
-import gevent
-from gevent import monkey
-from playwright.sync_api import sync_playwright, Request, ElementHandle, Route
-
-gevent.monkey.patch_all()
-
 from bloompy import BloomFilter
+from playwright.sync_api import sync_playwright, Request, ElementHandle, Route
 
 
 class Crawler(object):
@@ -20,6 +15,15 @@ class Crawler(object):
     def __init__(self, depth: int, max_url_nums: int, cookies: str, exclude_urls: List[str],
                  domain_reg_list: List[str],
                  path_dicts: List[str], header: dict = None):
+        """
+        :param depth: 爬虫深度，默认是5
+        :param max_url_nums: 最大爬取的url数量，默认是5000
+        :param cookies: 传入的cookie，直接按：a=b;c=d传入即可
+        :param exclude_urls: 不需要爬取的url，也不会出现在结果列表里，同样也可以按以下语法传入模糊匹配参数：*/logout
+        :param domain_reg_list: 关于域名校验的表达式，直接传入域名或者根域即可，如：baidu.com,www.baidu.com.cn，只会爬取当前域名下的
+        :param path_dicts: 路径字典，暂时没有实现相关功能
+        :param header: http头，传入字典
+        """
         self.domain_reg = ''
         self.domain_reg_list = domain_reg_list
         self.complement = 0
@@ -76,10 +80,6 @@ class Crawler(object):
         :return:
         """
         domain_reg = ['^']
-        if '*.  .com.cn' in self.domain_reg_list or '*.  .com' in self.domain_reg_list:
-            domain_reg.append('.*\.  \.com.*$')
-            self.domain_reg = ''.join(domain_reg)
-            return
         domain_reg.extend(['(http|https):\/\/' + domain.replace('.', '\.') + '.*|' for domain in self.domain_reg_list])
         # domain_reg.extend(map(lambda x: '(http|https):\/\/' + x.replace('.', '\.') + '.*|', self.domain_reg_list))
         tmp_domain_reg = ''.join(domain_reg)
@@ -91,10 +91,8 @@ class Crawler(object):
         self.domain_reg_list = self.parse_domain(domain_list) if not self.domain_reg_list else self.domain_reg_list
         self._init_reg()
         self._consist_exclude_urls_regex()
-        # for domain in domain_list:
-        #     self.crawl_url(domain)
-        tasks = [gevent.spawn(self.crawl_url(domain)) for domain in domain_list]
-        gevent.joinall(tasks)
+        for domain in domain_list:
+            self.crawl_url(domain)
         print('all tasks done')
         print(self.url_dict)
 
@@ -110,9 +108,9 @@ class Crawler(object):
             if len(self.url_dict.keys()) >= self.max_url_nums:
                 break
             print('now depth is:{}'.format(self.current_depth))
-            tasks = [gevent.spawn(self._crawler_handler, url) for url in self.current_crawl_queue if
-                     not url.endswith('.js')]
-            gevent.joinall(tasks)
+            for url in self.current_crawl_queue:
+                if not url.endswith('.js'):
+                    self._crawler_handler(url)
             # 将下一轮待爬取的url提升到当前
             self.current_crawl_queue = self.next_crawl_queue
             self.current_depth += 1
